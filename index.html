@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTS DATA CENTRE</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        :root { 
+            --red: #E62411; --bg: #020617; --sidebar: #0f172a; --card: #1e293b; 
+            --text: #f8fafc; --border: #334155; --active: #22c55e; 
+            --payroll: #f59e0b; --money: #10b981; --blue: #3b82f6; 
+            --whatsapp: #25D366;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; color: var(--text); overflow: hidden; }
+        
+        .sidebar { width: 350px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; }
+        .sidebar-header { padding: 25px; border-bottom: 1px solid var(--border); font-weight: 900; color: var(--red); text-transform: uppercase; font-size: 1.2rem; letter-spacing: 1px; }
+        .sidebar-content { flex: 1; padding: 20px; font-size: 13px; color: #94a3b8; overflow-y: auto; line-height: 1.6; }
+        
+        .driver-profile-box { display: none; margin-bottom: 20px; animation: fadeIn 0.3s; }
+        .profile-title { color: var(--text); font-size: 18px; font-weight: 800; border-left: 4px solid var(--red); padding-left: 10px; margin-bottom: 15px; }
+        .section-label { color: var(--red); font-weight: 900; font-size: 10px; text-transform: uppercase; margin-top: 20px; display: block; letter-spacing: 1px; }
+        
+        .log-text { 
+            background: #000; padding: 12px; border-radius: 5px; color: #f1f5f9; 
+            font-family: 'Segoe UI', monospace; font-size: 13px; white-space: pre-wrap; 
+            margin-top: 8px; border: 1px solid #1e293b; line-height: 1.5;
+        }
+
+        .notes-text { background: #1e293b; border: 1px solid var(--border); padding: 10px; border-radius: 5px; color: #f8fafc; margin-top: 5px; font-style: italic; font-size: 12px; }
+        .vehicle-report-box { background: #0f172a; border: 1px solid var(--red); padding: 10px; border-radius: 5px; margin-top: 8px; color: #f8fafc; }
+        
+        .map-dock { height: 280px; border-top: 3px solid var(--red); background: #000; position: relative; }
+        #sidebar-map { width: 100%; height: 100%; border: none; display: none; }
+        
+        .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 25px; position: relative; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 20px 30px; border-radius: 12px; border-bottom: 4px solid var(--red); margin-bottom: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .logo { font-size: 26px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+        .logo span { color: var(--red); }
+        
+        .action-bar { display: flex; gap: 8px; align-items: center; }
+        .btn { background: var(--border); color: #cbd5e1; border: none; padding: 10px 15px; border-radius: 6px; font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: background 0.2s, color 0.2s; }
+        .btn:hover { background: #475569; color: white; }
+        .btn-whatsapp:hover { background: var(--whatsapp); color: white; }
+        .btn-toggle-active { background: var(--payroll); color: #000; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 25px; }
+        .stat-card { background: var(--card); padding: 15px; border-radius: 10px; border-left: 5px solid var(--border); }
+        .stat-card h3 { margin: 0; font-size: 9px; color: #94a3b8; text-transform: uppercase; }
+        .stat-card p { margin: 8px 0 0; font-size: 22px; font-weight: 800; }
+        
+        .table-container { background: var(--card); border-radius: 12px; overflow-x: auto; border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        th { padding: 18px; font-size: 11px; text-transform: uppercase; color: #94a3b8; border-bottom: 2px solid var(--border); text-align: left; }
+        td { padding: 16px 18px; border-bottom: 1px solid var(--border); font-size: 14px; }
+        
+        .driver-name { cursor: pointer; color: var(--blue); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+        .check-link { cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+        .badge { padding: 5px 10px; border-radius: 4px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+        .badge-active { background: var(--active); color: white; }
+        .map-link { color: var(--blue); cursor: pointer; font-weight: 800; font-size: 11px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        #manual-modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(2, 6, 23, 0.9); }
+        .modal-content { background: var(--card); margin: 8% auto; padding: 30px; border-radius: 12px; width: 400px; border: 1px solid var(--border); }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 5px; text-transform: uppercase; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; background: var(--bg); border: 1px solid var(--border); color: white; border-radius: 5px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">FTS DATA</div>
+        <div class="sidebar-content" id="sidebar-info">
+            <div id="default-sidebar">
+                <p><strong>Status:</strong> <span style="color:var(--active)">Operational</span></p>
+                <p style="margin-top:10px; color:var(--payroll)">Rate: £22.04/hr</p>
+            </div>
+
+            <div id="driver-profile" class="driver-profile-box">
+                <div class="profile-title" id="side-name">DRIVER</div>
+                <button id="side-copy-btn" class="btn" style="width:100%; margin-bottom:15px; justify-content:center; background: var(--blue); color:white;">Copy Full Log</button>
+                
+                <span class="section-label">Weekly Shift Log</span>
+                <div class="log-text" id="side-log">...</div>
+
+                <span class="section-label">Latest Vehicle Check</span>
+                <div id="side-vehicle" class="vehicle-report-box">No data selected.</div>
+                
+                <span class="section-label">Additional Notes</span>
+                <div class="notes-text" id="side-notes">...</div>
+            </div>
+        </div>
+        <div class="map-dock"><iframe id="sidebar-map" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="header">
+            <div class="logo">FTS <span>DATA CENTRE</span></div>
+            <div class="action-bar">
+                <button id="week-toggle" class="btn" onclick="toggleWeek()">📅 Previous Week</button>
+                <button class="btn" onclick="exportDataPDF()">📄 Export PDF</button>
+                <button class="btn btn-whatsapp" onclick="openWhatsApp()">💬 Group Message</button>
+                <button class="btn" onclick="openModal()">➕ Manual Entry</button>
+                <button class="btn" onclick="loadData()">🔄 Refresh</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card"><h3>Drivers</h3><p id="stat-total">0</p></div>
+            <div class="stat-card" style="border-left-color: var(--active)"><h3>On Duty</h3><p id="stat-active" style="color:var(--active)">0</p></div>
+            <div class="stat-card" style="border-left-color: var(--payroll)"><h3>Nights Out</h3><p id="stat-nights" style="color:var(--payroll)">0</p></div>
+            <div class="stat-card" style="border-left-color: var(--money)"><h3>Wage Bill</h3><p id="stat-wages" style="color:var(--money)">£0.00</p></div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Driver</th><th>Status</th><th>Weekly Hours</th><th>15hr</th><th>Nights</th><th>Last Update</th><th>Vehicle Check</th><th>Location</th></tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="manual-modal">
+        <div class="modal-content">
+            <h2 style="color:var(--red); text-transform:uppercase; font-size:16px; margin-top:0; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Manual Log Entry</h2>
+            <div class="form-group"><label>Driver</label><select id="manual-driver-select" onchange="toggleNewDriverInput()"></select></div>
+            <div id="new-driver-container" class="form-group" style="display:none;"><label>New Driver Name</label><input type="text" id="manual-driver-new"></div>
+            <div class="form-group"><label>Action</label><select id="manual-action"><option value="START">START</option><option value="END">END</option><option value="NIGHT OUT">NIGHT OUT</option></select></div>
+            <div class="form-group"><label>Date/Time</label><input type="datetime-local" id="manual-time"></div>
+            <div class="form-group"><label>Additional Notes</label><textarea id="manual-notes" rows="2"></textarea></div>
+            <div style="display:flex; gap:10px; margin-top: 20px;"><button class="btn" style="flex:1; background:var(--red); color:white;" onclick="submitManualEntry()">Save Log</button><button class="btn" onclick="closeModal()">Cancel</button></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://mbudwnwxucluwgbkgbfx.supabase.co"; 
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1idWR3bnd4dWNsdXdnYmtnYmZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMDQwMjYsImV4cCI6MjA5MDc4MDAyNn0.xFv-FiQ894vdfJuQYWQyF4WzQXmlnmnKvz_c8nuzl5Q"; 
+        const HOURLY_RATE = 22.04;
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        let isPreviousWeek = false;
+        let knownDrivers = [];
+        let currentReport = {};
+
+        function openWhatsApp() { window.open("https://web.whatsapp.com/", '_blank'); }
+
+        function toggleWeek() {
+            isPreviousWeek = !isPreviousWeek;
+            const btn = document.getElementById('week-toggle');
+            btn.innerText = isPreviousWeek ? "📅 Current Week" : "📅 Previous Week";
+            btn.classList.toggle('btn-toggle-active', isPreviousWeek);
+            loadData();
+        }
+
+        async function loadData() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding:40px;'>Syncing data...</td></tr>";
+            
+            try {
+                // 1. Fetch Vehicle Checks
+                const { data: vChecks, error: vError } = await _supabase
+                    .from('daily_vehicle_checks') 
+                    .select('driver_name, registration, mileage, condition_status, defect_details, created_at')
+                    .order('created_at', { ascending: false });
+
+                const vehicleData = {};
+                if (vChecks) {
+                    vChecks.forEach(check => {
+                        const key = check.driver_name?.toLowerCase().trim();
+                        if (key && !vehicleData[key]) {
+                            vehicleData[key] = {
+                                status: check.condition_status || "No Status",
+                                reg: check.registration || "N/A",
+                                miles: check.mileage || "0",
+                                detail: check.defect_details || "None reported.",
+                                time: new Date(check.created_at).toLocaleString([], {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
+                            };
+                        }
+                    });
+                }
+
+                // 2. Process Fleet Logs
+                const now = new Date();
+                const day = now.getDay();
+                const diff = day === 0 ? -6 : 1 - day;
+                let startDate = new Date(now.setDate(now.getDate() + diff));
+                startDate.setHours(0,0,0,0);
+                if (isPreviousWeek) startDate.setDate(startDate.getDate() - 7);
+                let endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 7);
+
+                const { data: logs, error: lError } = await _supabase.from('fleet_logs').select('*')
+                    .gte('created_at', startDate.toISOString())
+                    .lt('created_at', endDate.toISOString())
+                    .order('created_at', { ascending: true });
+
+                if (lError) throw lError;
+
+                const report = {};
+                let activeCount = 0, nightTotal = 0, totalMs = 0;
+                let driverSet = new Set();
+
+                logs.forEach(log => {
+                    const key = log.driver_name.toLowerCase().trim();
+                    driverSet.add(log.driver_name);
+                    if (!report[key]) report[key] = { name: log.driver_name, ms: 0, lastStart: null, shifts: [], status: 'OFFLINE', long: 0, nights: 0, lastTime: '', lastLoc: log.coordinates, nightDates: new Set(), allNotes: [] };
+                    
+                    const d = report[key];
+                    const dateObj = new Date(log.created_at);
+                    if (log.notes_text) d.allNotes.push(`[${dateObj.toLocaleDateString()}] ${log.notes_text}`);
+
+                    if (log.action_type === 'START') { d.lastStart = dateObj; d.status = 'ACTIVE'; }
+                    else if (log.action_type === 'END' && d.lastStart) {
+                        const shiftMs = dateObj - d.lastStart;
+                        d.ms += shiftMs; totalMs += shiftMs;
+                        if (shiftMs > 46800000) d.long++;
+                        d.shifts.push({ 
+                            start: d.lastStart, end: dateObj, duration: (shiftMs/3600000).toFixed(1),
+                            dateKey: dateObj.toLocaleDateString(), dateLabel: dateObj.toLocaleDateString([], {weekday:'short'})
+                        });
+                        d.lastStart = null; d.status = 'OFFLINE';
+                    } else if (log.action_type === 'NIGHT OUT') { d.nights++; nightTotal++; d.nightDates.add(dateObj.toLocaleDateString()); }
+                    d.lastTime = dateObj.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                    d.lastLoc = log.coordinates;
+                });
+
+                currentReport = report;
+                knownDrivers = Array.from(driverSet).sort();
+                tbody.innerHTML = "";
+
+                // 3. Render Table
+                Object.keys(report).sort().forEach(key => {
+                    const d = report[key];
+                    const v = vehicleData[key] || { status: "No Check", detail: "No data available.", reg: "N/A", miles: "0", time: "N/A" };
+                    if (d.status === 'ACTIVE') activeCount++;
+                    
+                    const isDefect = v.status.toLowerCase().includes('defect') || v.status.includes('⚠️');
+                    const shiftLogFormatted = d.shifts.map(s => {
+                        const hasN = d.nightDates.has(s.dateKey) ? " (N)" : "";
+                        return `${s.dateLabel}: ${s.start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} - ${s.end.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} (${s.duration}h)${hasN}`;
+                    }).join('\n');
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><span class="driver-name">${d.name.toUpperCase()}</span></td>
+                        <td><span class="badge ${d.status==='ACTIVE'?'badge-active':''}" style="background:${d.status==='ACTIVE'?'':'#334155'}">${d.status}</span></td>
+                        <td>${(d.ms/3600000).toFixed(2)}h</td>
+                        <td>${d.long}/3</td>
+                        <td>${d.nights}</td>
+                        <td style="opacity:0.6">${d.lastTime}</td>
+                        <td><span class="check-link" style="color:${isDefect?'var(--red)':'var(--active)'}">${v.status}</span></td>
+                        <td><span class="map-link" onclick="updateDock('${d.lastLoc}')">📍 GPS</span></td>
+                    `;
+
+                    // Click handlers for both name and vehicle status
+                    const openProfile = () => updateSidebar(d.name, shiftLogFormatted, d.allNotes.join('\n'), v);
+                    tr.querySelector('.driver-name').onclick = openProfile;
+                    tr.querySelector('.check-link').onclick = openProfile;
+                    
+                    tbody.appendChild(tr);
+                });
+
+                document.getElementById('stat-total').innerText = Object.keys(report).length;
+                document.getElementById('stat-active').innerText = activeCount;
+                document.getElementById('stat-nights').innerText = nightTotal;
+                document.getElementById('stat-wages').innerText = `£${((totalMs/3600000)*HOURLY_RATE).toLocaleString()}`;
+            } catch (e) { 
+                console.error(e);
+                tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding:40px; color:var(--red)'>Fatal Sync Error</td></tr>"; 
+            }
+        }
+
+        function updateSidebar(name, log, notes, vehicle) {
+            document.getElementById('default-sidebar').style.display = 'none';
+            document.getElementById('driver-profile').style.display = 'block';
+            document.getElementById('side-name').innerText = name.toUpperCase();
+            document.getElementById('side-log').innerText = log || "No shifts recorded.";
+            document.getElementById('side-notes').innerText = notes || "No notes.";
+
+            // Vehicle Report Formatting
+            const isDefect = vehicle.status.toLowerCase().includes('defect');
+            document.getElementById('side-vehicle').innerHTML = `
+                <div style="font-weight:bold; margin-bottom:5px; color:${isDefect?'var(--red)':'var(--active)'}">${vehicle.status}</div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; opacity:0.8; margin-bottom:8px;">
+                    <span>Reg: ${vehicle.reg}</span>
+                    <span>Miles: ${vehicle.miles}</span>
+                </div>
+                <div style="border-top:1px solid #334155; padding-top:8px; font-size:12px; color:#f8fafc;">
+                    ${vehicle.detail}
+                </div>
+                <div style="font-size:10px; opacity:0.5; margin-top:10px; text-align:right;">Checked: ${vehicle.time}</div>
+            `;
+
+            document.getElementById('side-copy-btn').onclick = async () => {
+                const text = `DRIVER: ${name}\n\nWEEKLY LOG:\n${log}\n\nVEHICLE CHECK:\nStatus: ${vehicle.status}\nReg: ${vehicle.reg}\nMiles: ${vehicle.miles}\nDetails: ${vehicle.detail}\n\nNOTES:\n${notes}`;
+                await navigator.clipboard.writeText(text);
+                document.getElementById('side-copy-btn').innerText = "COPIED!";
+                setTimeout(() => document.getElementById('side-copy-btn').innerText = "Copy Full Log", 2000);
+            };
+        }
+
+        async function exportDataPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('l', 'mm', 'a4');
+            const rows = Object.values(currentReport).map(d => [d.name.toUpperCase(), (d.ms/3600000).toFixed(2), d.long, d.nights, '£' + ((d.ms/3600000)*HOURLY_RATE).toLocaleString()]);
+            doc.text("FTS PAYROLL REPORT", 14, 20);
+            doc.autoTable({ startY: 30, head: [['DRIVER', 'HOURS', '15hr', 'NIGHTS', 'WAGES']], body: rows, headStyles: { fillColor: [230, 36, 17] } });
+            doc.save(`FTS_Payroll.pdf`);
+        }
+
+        function openModal() { 
+            const select = document.getElementById('manual-driver-select');
+            select.innerHTML = '<option value="">-- Select --</option>';
+            knownDrivers.forEach(d => { select.innerHTML += `<option value="${d}">${d.toUpperCase()}</option>`; });
+            select.innerHTML += '<option value="NEW_DRIVER">Add New...</option>';
+            document.getElementById('manual-modal').style.display = 'block'; 
+        }
+        function closeModal() { document.getElementById('manual-modal').style.display = 'none'; }
+        function toggleNewDriverInput() { document.getElementById('new-driver-container').style.display = (document.getElementById('manual-driver-select').value === 'NEW_DRIVER') ? 'block' : 'none'; }
+        function updateDock(coords) { const f = document.getElementById('sidebar-map'); f.style.display="block"; f.src = `https://maps.google.com/maps?q=${coords}&t=k&z=15&output=embed`; }
+
+        async function submitManualEntry() {
+            const select = document.getElementById('manual-driver-select');
+            let name = select.value === 'NEW_DRIVER' ? document.getElementById('manual-driver-new').value : select.value;
+            if(!name || !document.getElementById('manual-time').value) return alert("Required fields missing");
+            
+            await _supabase.from('fleet_logs').insert([{ 
+                driver_name: name.trim(), 
+                action_type: document.getElementById('manual-action').value, 
+                created_at: new Date(document.getElementById('manual-time').value).toISOString(), 
+                coordinates: "53.1424,-1.1396",
+                notes_text: document.getElementById('manual-notes').value.trim() || null
+            }]);
+            closeModal(); loadData();
+        }
+
+        window.onload = loadData;
+        setInterval(loadData, 60000);
+    </script>
+</body>
+</html>
