@@ -28,7 +28,8 @@
         
         .log-text { background: #000; padding: 12px; border-radius: 5px; color: #f1f5f9; font-family: 'Segoe UI', monospace; font-size: 13px; white-space: pre-wrap; margin-top: 8px; border: 1px solid #1e293b; line-height: 1.5; }
         .notes-text { background: #1e293b; border: 1px solid var(--border); padding: 10px; border-radius: 5px; color: #f8fafc; margin-top: 5px; font-style: italic; font-size: 12px; }
-        .vehicle-report-box { background: #0f172a; border: 1px solid var(--red); padding: 10px; border-radius: 5px; margin-top: 8px; color: #f8fafc; }
+        .report-box { background: #0f172a; border: 1px solid var(--border); padding: 10px; border-radius: 5px; margin-top: 8px; color: #f8fafc; }
+        .report-box.alert { border-color: var(--red); }
         
         .map-dock { height: 280px; border-top: 3px solid var(--red); background: #000; position: relative; }
         #sidebar-map { width: 100%; height: 100%; border: none; display: none; }
@@ -41,7 +42,6 @@
         .action-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .btn { background: var(--border); color: #cbd5e1; border: none; padding: 8px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s; }
         .btn:hover { background: #475569; color: white; }
-        .btn-whatsapp:hover { background: var(--whatsapp); color: white; }
         .btn-active-week { background: var(--payroll); color: #000; }
 
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 25px; }
@@ -50,7 +50,7 @@
         .stat-card p { margin: 8px 0 0; font-size: 22px; font-weight: 800; }
         
         .table-container { background: var(--card); border-radius: 12px; overflow-x: auto; border: 1px solid var(--border); }
-        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1100px; }
         th { padding: 18px; font-size: 11px; text-transform: uppercase; color: #94a3b8; border-bottom: 2px solid var(--border); text-align: left; }
         td { padding: 16px 18px; border-bottom: 1px solid var(--border); font-size: 14px; }
         
@@ -86,10 +86,13 @@
                 <span class="section-label">Weekly Shift Log</span>
                 <div class="log-text" id="side-log">...</div>
 
-                <span class="section-label">Latest Vehicle Check</span>
-                <div id="side-vehicle" class="vehicle-report-box">No data selected.</div>
+                <span class="section-label">Vehicle Report</span>
+                <div id="side-vehicle" class="report-box">No data.</div>
+
+                <span class="section-label">Trailer Report</span>
+                <div id="side-trailer" class="report-box">No data.</div>
                 
-                <span class="section-label">Additional Notes</span>
+                <span class="section-label">Shift Notes</span>
                 <div class="notes-text" id="side-notes">...</div>
             </div>
         </div>
@@ -103,11 +106,9 @@
                 <button id="week-toggle" class="btn" onclick="toggleWeek()">📅 Previous Week</button>
                 <button class="btn" onclick="exportDataPDF()">📄 Export PDF</button>
                 <button class="btn btn-whatsapp" onclick="openWhatsApp()">💬 Group Message</button>
-                
                 <a href="https://rich01623.github.io/Maintenance/" target="_blank" class="btn">🛠️ Vehicle Status</a>
                 <a href="https://docs.google.com/spreadsheets/d/1LJpZqCfRlNNNr494sCB5Ax1hFwFh4e7LzAIa0sTHoks/edit?usp=sharing" target="_blank" class="btn">⛽ Fuel</a>
                 <a href="https://docs.google.com/spreadsheets/d/1nZvQOplnru5hUCy4VRmm7bVHOwuJyzvV4CD3DyDGmO0/edit?usp=sharing" target="_blank" class="btn">🚛 Trailer</a>
-                
                 <button class="btn" onclick="openModal()">➕ Manual Entry</button>
                 <button class="btn" onclick="loadData()">🔄 Refresh</button>
             </div>
@@ -123,7 +124,7 @@
         <div class="table-container">
             <table>
                 <thead>
-                    <tr><th>Driver</th><th>Status</th><th>Weekly Hours</th><th>15hr</th><th>Nights</th><th>Last Update</th><th>Vehicle Check</th><th>Location</th></tr>
+                    <tr><th>Driver</th><th>Status</th><th>Weekly Hours</th><th>15hr</th><th>Nights</th><th>Last Update</th><th>Vehicle Check</th><th>Trailer Check</th><th>Location</th></tr>
                 </thead>
                 <tbody id="table-body"></tbody>
             </table>
@@ -164,25 +165,40 @@
 
         async function loadData() {
             const tbody = document.getElementById('table-body');
-            tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding:40px;'>Syncing data...</td></tr>";
+            tbody.innerHTML = "<tr><td colspan='9' style='text-align:center; padding:40px;'>Syncing data...</td></tr>";
             
             try {
-                // Fetch Vehicle Checks
-                const { data: vChecks, error: vError } = await _supabase
-                    .from('daily_vehicle_checks') 
-                    .select('driver_name, registration, mileage, condition_status, defect_details, created_at')
-                    .order('created_at', { ascending: false });
+                // Fetch Vehicle and Trailer Checks
+                const [vResponse, tResponse] = await Promise.all([
+                    _supabase.from('daily_vehicle_checks').select('*').order('created_at', { ascending: false }),
+                    _supabase.from('daily_trailer_checks').select('*').order('created_at', { ascending: false })
+                ]);
 
                 const vehicleData = {};
-                if (vChecks) {
-                    vChecks.forEach(check => {
+                if (vResponse.data) {
+                    vResponse.data.forEach(check => {
                         const key = check.driver_name?.toLowerCase().trim();
                         if (key && !vehicleData[key]) {
                             vehicleData[key] = {
                                 status: check.condition_status || "No Status",
                                 reg: check.registration || "N/A",
                                 miles: check.mileage || "0",
-                                detail: check.defect_details || "None reported.",
+                                detail: check.defect_details || "No defects reported.",
+                                time: new Date(check.created_at).toLocaleString([], {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
+                            };
+                        }
+                    });
+                }
+
+                const trailerData = {};
+                if (tResponse.data) {
+                    tResponse.data.forEach(check => {
+                        const key = check.driver_name?.toLowerCase().trim();
+                        if (key && !trailerData[key]) {
+                            trailerData[key] = {
+                                status: check.condition_status || "No Status",
+                                trailer_no: check.trailer_number || "N/A",
+                                detail: check.defect_details || "No defects reported.",
                                 time: new Date(check.created_at).toLocaleString([], {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
                             };
                         }
@@ -240,10 +256,14 @@
 
                 Object.keys(report).sort().forEach(key => {
                     const d = report[key];
-                    const v = vehicleData[key] || { status: "No Check", detail: "No data available.", reg: "N/A", miles: "0", time: "N/A" };
+                    const v = vehicleData[key] || { status: "No Check", detail: "N/A", reg: "N/A", miles: "0", time: "N/A" };
+                    const t = trailerData[key] || { status: "No Check", detail: "N/A", trailer_no: "N/A", time: "N/A" };
+                    
                     if (d.status === 'ACTIVE') activeCount++;
                     
-                    const isDefect = v.status.toLowerCase().includes('defect') || v.status.includes('⚠️');
+                    const isVDefect = v.status.toLowerCase().includes('defect') || v.status.includes('⚠️');
+                    const isTDefect = t.status.toLowerCase().includes('defect') || t.status.includes('⚠️');
+
                     const shiftLogFormatted = d.shifts.map(s => {
                         const hasN = d.nightDates.has(s.dateKey) ? " (N)" : "";
                         return `${s.dateLabel}: ${s.start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} - ${s.end.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} (${s.duration}h)${hasN}`;
@@ -257,13 +277,15 @@
                         <td>${d.long}/3</td>
                         <td>${d.nights}</td>
                         <td style="opacity:0.6">${d.lastTime}</td>
-                        <td><span class="check-link" style="color:${isDefect?'var(--red)':'var(--active)'}">${v.status}</span></td>
+                        <td><span class="v-check check-link" style="color:${isVDefect?'var(--red)':'var(--active)'}">${v.status}</span></td>
+                        <td><span class="t-check check-link" style="color:${isTDefect?'var(--red)':'var(--active)'}">${t.status}</span></td>
                         <td><span class="map-link" onclick="updateDock('${d.lastLoc}')">📍 GPS</span></td>
                     `;
 
-                    const openProfile = () => updateSidebar(d.name, shiftLogFormatted, d.allNotes.join('\n'), v);
+                    const openProfile = () => updateSidebar(d.name, shiftLogFormatted, d.allNotes.join('\n'), v, t);
                     tr.querySelector('.driver-name').onclick = openProfile;
-                    tr.querySelector('.check-link').onclick = openProfile;
+                    tr.querySelector('.v-check').onclick = openProfile;
+                    tr.querySelector('.t-check').onclick = openProfile;
                     
                     tbody.appendChild(tr);
                 });
@@ -274,32 +296,42 @@
                 document.getElementById('stat-wages').innerText = `£${((totalMs/3600000)*HOURLY_RATE).toLocaleString()}`;
             } catch (e) { 
                 console.error(e);
-                tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding:40px; color:var(--red)'>Fatal Sync Error</td></tr>"; 
+                tbody.innerHTML = "<tr><td colspan='9' style='text-align:center; padding:40px; color:var(--red)'>Fatal Sync Error</td></tr>"; 
             }
         }
 
-        function updateSidebar(name, log, notes, vehicle) {
+        function updateSidebar(name, log, notes, vehicle, trailer) {
             document.getElementById('default-sidebar').style.display = 'none';
             document.getElementById('driver-profile').style.display = 'block';
             document.getElementById('side-name').innerText = name.toUpperCase();
             document.getElementById('side-log').innerText = log || "No shifts recorded.";
             document.getElementById('side-notes').innerText = notes || "No notes.";
 
-            const isDefect = vehicle.status.toLowerCase().includes('defect');
+            // Vehicle Display
+            const isVDefect = vehicle.status.toLowerCase().includes('defect');
+            document.getElementById('side-vehicle').className = isVDefect ? 'report-box alert' : 'report-box';
             document.getElementById('side-vehicle').innerHTML = `
-                <div style="font-weight:bold; margin-bottom:5px; color:${isDefect?'var(--red)':'var(--active)'}">${vehicle.status}</div>
+                <div style="font-weight:bold; margin-bottom:5px; color:${isVDefect?'var(--red)':'var(--active)'}">${vehicle.status}</div>
                 <div style="display:flex; justify-content:space-between; font-size:11px; opacity:0.8; margin-bottom:8px;">
                     <span>Reg: ${vehicle.reg}</span>
                     <span>Miles: ${vehicle.miles}</span>
                 </div>
-                <div style="border-top:1px solid #334155; padding-top:8px; font-size:12px; color:#f8fafc;">
-                    ${vehicle.detail}
-                </div>
-                <div style="font-size:10px; opacity:0.5; margin-top:10px; text-align:right;">Checked: ${vehicle.time}</div>
+                <div style="font-size:12px;">${vehicle.detail}</div>
+                <div style="font-size:9px; opacity:0.5; margin-top:8px; text-align:right;">${vehicle.time}</div>
+            `;
+
+            // Trailer Display
+            const isTDefect = trailer.status.toLowerCase().includes('defect');
+            document.getElementById('side-trailer').className = isTDefect ? 'report-box alert' : 'report-box';
+            document.getElementById('side-trailer').innerHTML = `
+                <div style="font-weight:bold; margin-bottom:5px; color:${isTDefect?'var(--red)':'var(--active)'}">${trailer.status}</div>
+                <div style="font-size:11px; opacity:0.8; margin-bottom:8px;">Trailer: ${trailer.trailer_no}</div>
+                <div style="font-size:12px;">${trailer.detail}</div>
+                <div style="font-size:9px; opacity:0.5; margin-top:8px; text-align:right;">${trailer.time}</div>
             `;
 
             document.getElementById('side-copy-btn').onclick = async () => {
-                const text = `DRIVER: ${name}\n\nWEEKLY LOG:\n${log}\n\nVEHICLE CHECK:\nStatus: ${vehicle.status}\nReg: ${vehicle.reg}\nMiles: ${vehicle.miles}\nDetails: ${vehicle.detail}\n\nNOTES:\n${notes}`;
+                const text = `DRIVER: ${name}\n\nWEEKLY LOG:\n${log}\n\nVEHICLE: ${vehicle.status} (${vehicle.reg})\nTRAILER: ${trailer.status} (${trailer.trailer_no})\n\nNOTES:\n${notes}`;
                 await navigator.clipboard.writeText(text);
                 document.getElementById('side-copy-btn').innerText = "COPIED!";
                 setTimeout(() => document.getElementById('side-copy-btn').innerText = "Copy Full Log", 2000);
