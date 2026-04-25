@@ -13,7 +13,7 @@
             --red: #E62411; --bg: #020617; --sidebar: #0f172a; --card: #1e293b; 
             --text: #f8fafc; --border: #334155; --active: #22c55e; 
             --payroll: #f59e0b; --money: #10b981; --blue: #3b82f6; 
-            --whatsapp: #25D366;
+            --yellow: #ffff00;
         }
 
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; color: var(--text); overflow: hidden; }
@@ -28,8 +28,12 @@
         
         .log-text { background: #000; padding: 12px; border-radius: 5px; color: #f1f5f9; font-family: 'Segoe UI', monospace; font-size: 13px; white-space: pre-wrap; margin-top: 8px; border: 1px solid #1e293b; line-height: 1.5; }
         .notes-text { background: #1e293b; border: 1px solid var(--border); padding: 10px; border-radius: 5px; color: #f8fafc; margin-top: 5px; font-style: italic; font-size: 12px; }
+        
         .report-box { background: #0f172a; border: 1px solid var(--border); padding: 10px; border-radius: 5px; margin-top: 8px; color: #f8fafc; }
-        .report-box.alert { border-color: var(--red); }
+        .report-box.alert-red { border-color: var(--red); background: rgba(230, 36, 17, 0.05); }
+        .report-box.alert-yellow { border-color: var(--yellow); background: rgba(255, 255, 0, 0.05); }
+        
+        .sub-note { margin-top: 8px; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; border-left: 3px solid var(--blue); font-size: 11px; color: #f8fafc; }
         
         .map-dock { height: 280px; border-top: 3px solid var(--red); background: #000; position: relative; }
         #sidebar-map { width: 100%; height: 100%; border: none; display: none; }
@@ -163,12 +167,20 @@
             loadData();
         }
 
+        // Updated Helper for Logic Priority
+        function getCheckColor(status) {
+            const s = (status || "").toLowerCase();
+            if (s.includes("nil")) return "var(--active)"; // Green (Priority 1)
+            if (s.includes("no check")) return "var(--yellow)"; // Yellow (Priority 2)
+            if (s.includes("defect") || s.includes("⚠️")) return "var(--red)"; // Red (Priority 3)
+            return "#cbd5e1";
+        }
+
         async function loadData() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = "<tr><td colspan='9' style='text-align:center; padding:40px;'>Syncing data...</td></tr>";
             
             try {
-                // Fetch Vehicle and Trailer Checks
                 const [vResponse, tResponse] = await Promise.all([
                     _supabase.from('daily_vehicle_checks').select('*').order('created_at', { ascending: false }),
                     _supabase.from('daily_trailer_checks').select('*').order('created_at', { ascending: false })
@@ -180,7 +192,7 @@
                         const key = check.driver_name?.toLowerCase().trim();
                         if (key && !vehicleData[key]) {
                             vehicleData[key] = {
-                                status: check.condition_status || "No Status",
+                                status: check.condition_status || "No Check",
                                 reg: check.registration || "N/A",
                                 miles: check.mileage || "0",
                                 detail: check.defect_details || "No defects reported.",
@@ -196,16 +208,16 @@
                         const key = check.driver_name?.toLowerCase().trim();
                         if (key && !trailerData[key]) {
                             trailerData[key] = {
-                                status: check.condition_status || "No Status",
+                                status: check.condition_status || "No Check",
                                 trailer_no: check.trailer_number || "N/A",
                                 detail: check.defect_details || "No defects reported.",
+                                trailer_notes: check.notes || "",
                                 time: new Date(check.created_at).toLocaleString([], {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
                             };
                         }
                     });
                 }
 
-                // Process Fleet Logs
                 const now = new Date();
                 const day = now.getDay();
                 const diff = day === 0 ? -6 : 1 - day;
@@ -257,12 +269,12 @@
                 Object.keys(report).sort().forEach(key => {
                     const d = report[key];
                     const v = vehicleData[key] || { status: "No Check", detail: "N/A", reg: "N/A", miles: "0", time: "N/A" };
-                    const t = trailerData[key] || { status: "No Check", detail: "N/A", trailer_no: "N/A", time: "N/A" };
+                    const t = trailerData[key] || { status: "No Check", detail: "N/A", trailer_no: "N/A", trailer_notes: "", time: "N/A" };
                     
                     if (d.status === 'ACTIVE') activeCount++;
                     
-                    const isVDefect = v.status.toLowerCase().includes('defect') || v.status.includes('⚠️');
-                    const isTDefect = t.status.toLowerCase().includes('defect') || t.status.includes('⚠️');
+                    const vColor = getCheckColor(v.status);
+                    const tColor = getCheckColor(t.status);
 
                     const shiftLogFormatted = d.shifts.map(s => {
                         const hasN = d.nightDates.has(s.dateKey) ? " (N)" : "";
@@ -277,8 +289,8 @@
                         <td>${d.long}/3</td>
                         <td>${d.nights}</td>
                         <td style="opacity:0.6">${d.lastTime}</td>
-                        <td><span class="v-check check-link" style="color:${isVDefect?'var(--red)':'var(--active)'}">${v.status}</span></td>
-                        <td><span class="t-check check-link" style="color:${isTDefect?'var(--red)':'var(--active)'}">${t.status}</span></td>
+                        <td><span class="v-check check-link" style="color:${vColor}">${v.status}</span></td>
+                        <td><span class="t-check check-link" style="color:${tColor}">${t.status}</span></td>
                         <td><span class="map-link" onclick="updateDock('${d.lastLoc}')">📍 GPS</span></td>
                     `;
 
@@ -307,11 +319,15 @@
             document.getElementById('side-log').innerText = log || "No shifts recorded.";
             document.getElementById('side-notes').innerText = notes || "No notes.";
 
-            // Vehicle Display
-            const isVDefect = vehicle.status.toLowerCase().includes('defect');
-            document.getElementById('side-vehicle').className = isVDefect ? 'report-box alert' : 'report-box';
+            // Vehicle Display Sidebar
+            const vColor = getCheckColor(vehicle.status);
+            let vClass = 'report-box';
+            if(vColor === "var(--red)") vClass += ' alert-red';
+            if(vColor === "var(--yellow)") vClass += ' alert-yellow';
+
+            document.getElementById('side-vehicle').className = vClass;
             document.getElementById('side-vehicle').innerHTML = `
-                <div style="font-weight:bold; margin-bottom:5px; color:${isVDefect?'var(--red)':'var(--active)'}">${vehicle.status}</div>
+                <div style="font-weight:bold; margin-bottom:5px; color:${vColor}">${vehicle.status}</div>
                 <div style="display:flex; justify-content:space-between; font-size:11px; opacity:0.8; margin-bottom:8px;">
                     <span>Reg: ${vehicle.reg}</span>
                     <span>Miles: ${vehicle.miles}</span>
@@ -320,18 +336,29 @@
                 <div style="font-size:9px; opacity:0.5; margin-top:8px; text-align:right;">${vehicle.time}</div>
             `;
 
-            // Trailer Display
-            const isTDefect = trailer.status.toLowerCase().includes('defect');
-            document.getElementById('side-trailer').className = isTDefect ? 'report-box alert' : 'report-box';
-            document.getElementById('side-trailer').innerHTML = `
-                <div style="font-weight:bold; margin-bottom:5px; color:${isTDefect?'var(--red)':'var(--active)'}">${trailer.status}</div>
+            // Trailer Display Sidebar
+            const tColor = getCheckColor(trailer.status);
+            let tClass = 'report-box';
+            if(tColor === "var(--red)") tClass += ' alert-red';
+            if(tColor === "var(--yellow)") tClass += ' alert-yellow';
+
+            let trailerHTML = `
+                <div style="font-weight:bold; margin-bottom:5px; color:${tColor}">${trailer.status}</div>
                 <div style="font-size:11px; opacity:0.8; margin-bottom:8px;">Trailer: ${trailer.trailer_no}</div>
                 <div style="font-size:12px;">${trailer.detail}</div>
-                <div style="font-size:9px; opacity:0.5; margin-top:8px; text-align:right;">${trailer.time}</div>
             `;
+            
+            if (trailer.trailer_notes && trailer.trailer_notes.trim() !== "") {
+                trailerHTML += `<div class="sub-note"><strong>Notes:</strong> ${trailer.trailer_notes}</div>`;
+            }
+
+            trailerHTML += `<div style="font-size:9px; opacity:0.5; margin-top:8px; text-align:right;">${trailer.time}</div>`;
+            
+            document.getElementById('side-trailer').className = tClass;
+            document.getElementById('side-trailer').innerHTML = trailerHTML;
 
             document.getElementById('side-copy-btn').onclick = async () => {
-                const text = `DRIVER: ${name}\n\nWEEKLY LOG:\n${log}\n\nVEHICLE: ${vehicle.status} (${vehicle.reg})\nTRAILER: ${trailer.status} (${trailer.trailer_no})\n\nNOTES:\n${notes}`;
+                const text = `DRIVER: ${name}\n\nWEEKLY LOG:\n${log}\n\nVEHICLE: ${vehicle.status} (${vehicle.reg})\nTRAILER: ${trailer.status} (${trailer.trailer_no})\nTrailer Notes: ${trailer.trailer_notes}\n\nNOTES:\n${notes}`;
                 await navigator.clipboard.writeText(text);
                 document.getElementById('side-copy-btn').innerText = "COPIED!";
                 setTimeout(() => document.getElementById('side-copy-btn').innerText = "Copy Full Log", 2000);
